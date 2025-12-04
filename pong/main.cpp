@@ -6,7 +6,7 @@
 
 // секция данных игры  
 typedef struct {
-    float x, y, width, height, rad, dx, dy, speed;
+    float x, y, width, height, rad, dx, dy, speed, gravity, jump, jumpheight;
     HBITMAP hBitmap;//хэндл к спрайту шарика 
 } sprite;
 
@@ -40,11 +40,14 @@ void InitGame()
     hBack = (HBITMAP)LoadImageA(NULL, "back2.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
     //------------------------------------------------------
 
-    racket.width = 128; //хитбокс?
+    racket.width = 128; //хитбокс
     racket.height = 210;
-    racket.speed = 30;//скорость перемещения ракетки
+    racket.speed = 20;//скорость перемещения ракетки
     racket.x = window.width / 2.;//ракетка посередине окна
     racket.y = window.height - racket.height;//чуть выше низа экрана - на высоту ракетки
+    racket.jump = 10;
+    racket.jumpheight = racket.y - racket.jump*2;
+    racket.gravity = 5;
 
     //enemy.x = racket.x;//х координату оппонета ставим в ту же точку что и игрока
 
@@ -60,7 +63,16 @@ void InitGame()
 
    
 }
+void Jump() {
 
+    //for (int a; a = racket.y <= racket.jumpheight; a++ )
+    racket.y -= racket.jump;
+
+    if (racket.y <= racket.jumpheight) 
+    {
+        racket.jump = 0;
+    }
+}
 void ProcessSound(const char* name)//проигрывание аудиофайла в формате .wav, файл должен лежать в той же папке где и программа
 {
     PlaySound(TEXT(name), NULL, SND_FILENAME | SND_ASYNC);//переменная name содежрит имя файла. флаг ASYNC позволяет проигрывать звук паралельно с исполнением программы
@@ -75,28 +87,32 @@ void ShowScore()
     auto hFont = CreateFont(70, 0, 0, 0, FW_BOLD, 0, 0, 0, 0, 0, 0, 2, 0, "CALIBRI");
     auto hTmp = (HFONT)SelectObject(window.context, hFont);
 
-    char txt[32];//буфер для текста
-    _itoa_s(game.score, txt, 10);//преобразование числовой переменной в текст. текст окажется в переменной txt
-    TextOutA(window.context, 10, 10, "Score", 5);
-    TextOutA(window.context, 200, 10, (LPCSTR)txt, strlen(txt));
+    //char txt[32];//буфер для текста
+    //_itoa_s(game.score, txt, 10);//преобразование числовой переменной в текст. текст окажется в переменной txt
+    //TextOutA(window.context, 10, 10, "Score", 5);
+    //TextOutA(window.context, 200, 10, (LPCSTR)txt, strlen(txt));
 
-    _itoa_s(game.balls, txt, 10);
-    TextOutA(window.context, 10, 100, "Balls", 5);
-    TextOutA(window.context, 200, 100, (LPCSTR)txt, strlen(txt));
+    //_itoa_s(game.balls, txt, 10);
+    //TextOutA(window.context, 10, 100, "Balls", 5);
+    //TextOutA(window.context, 200, 100, (LPCSTR)txt, strlen(txt));
 }
 
 void ProcessInput()
 {
     if (GetAsyncKeyState(VK_LEFT)) racket.x -= racket.speed;
     if (GetAsyncKeyState(VK_RIGHT)) racket.x += racket.speed;
-    //if (GetAsyncKeyState(VK_UP)) racket.y -= racket.speed;
-    //if (GetAsyncKeyState(VK_DOWN)) racket.y += racket.speed;
-
-    if (!game.action && GetAsyncKeyState(VK_SPACE))
+    if (GetAsyncKeyState(VK_UP)) racket.y -= racket.speed;
+    if (GetAsyncKeyState(VK_DOWN)) racket.y += racket.speed;
+    if (GetAsyncKeyState(VK_SPACE))
     {
-        game.action = true;
-        ProcessSound("bounce.wav");
-    }
+        Jump();
+    };
+
+    //if (!game.action && GetAsyncKeyState(VK_SPACE))
+    //{
+    //    game.action = true;
+    //    ProcessSound("bounce.wav");
+    //}
 }
 
 void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool alpha = false)
@@ -149,6 +165,8 @@ void LimitRacket()
 {
     racket.x = max(racket.x, racket.width / 2.);//если коодината левого угла ракетки меньше нуля, присвоим ей ноль
     racket.x = min(racket.x, window.width - racket.width / 2.);//аналогично для правого угла
+    racket.y = max(racket.y, racket.height * 0.1);
+    racket.y = min(racket.y, window.height - racket.height * 3.2);
 }
 
 //void CheckWalls()
@@ -264,6 +282,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     
     while (!GetAsyncKeyState(VK_ESCAPE))
     {
+        racket.y += racket.gravity;
+
         ShowRacketAndBall();//рисуем фон, ракетку и шарик
         ShowScore();//рисуем очик и жизни
         BitBlt(window.device_context, 0, 0, window.width, window.height, window.context, 0, 0, SRCCOPY);//копируем буфер в окно
