@@ -40,7 +40,7 @@ void InitGame()
     hBack = (HBITMAP)LoadImageA(NULL, "back2.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
     //------------------------------------------------------
 
-    racket.width = 128;
+    racket.width = 128; //хитбокс?
     racket.height = 210;
     racket.speed = 30;//скорость перемещения ракетки
     racket.x = window.width / 2.;//ракетка посередине окна
@@ -89,6 +89,8 @@ void ProcessInput()
 {
     if (GetAsyncKeyState(VK_LEFT)) racket.x -= racket.speed;
     if (GetAsyncKeyState(VK_RIGHT)) racket.x += racket.speed;
+    //if (GetAsyncKeyState(VK_UP)) racket.y -= racket.speed;
+    //if (GetAsyncKeyState(VK_DOWN)) racket.y += racket.speed;
 
     if (!game.action && GetAsyncKeyState(VK_SPACE))
     {
