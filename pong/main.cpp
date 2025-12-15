@@ -7,6 +7,7 @@
 #include <vector>
 
 using namespace std;
+
 // секция данных игры  
 typedef struct
 {
@@ -16,10 +17,10 @@ typedef struct
     bool isOnGround;        // на земле ли
 } sprite;
 
-
 typedef struct //структура для платформ
 {
     float x, y, width, height;
+    HBITMAP hBitmap;
 } platform;
 
 typedef struct //структура для локации
@@ -30,7 +31,7 @@ typedef struct //структура для локации
 } location;
 
 sprite racket;//ракетка игрока
-
+sprite cube;
 struct
 {
     int score, balls;//количество набранных очков и оставшихся "жизней"
@@ -54,16 +55,23 @@ void InitGame()
     //пути относительные - файлы должны лежать рядом с .exe 
     //результат работы LoadImageA сохраняет в хэндлах битмапов, рисование спрайтов будет произовдиться с помощью этих хэндлов
     racket.hBitmap = (HBITMAP)LoadImageA(NULL, "rash.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    cube.hBitmap = (HBITMAP)LoadImageA(NULL, "rash.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+
     hBack = (HBITMAP)LoadImageA(NULL, "back2.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
 
     racket.width = 128; //хитбокс
     racket.height = 210;
-    racket.speed = 20;//скорость перемещения ракетки
+    racket.speed = 15;//скорость перемещения ракетки
     racket.x = window.width / 2.;//ракетка посередине окна
     racket.y = window.height - racket.height;//чуть выше низа экрана - на высоту ракетки
     racket.jump = 30;
     racket.jumpheight = racket.y - (racket.jump*2.f);
     racket.gravity = 5;
+
+    cube.width = 300;
+    cube.height = 300;
+    cube.x = window.width/4;
+    cube.y = window.height/ 2;
 }
 void Jump()
 {
@@ -81,17 +89,21 @@ void ShowScore()
 
     char txt[32];//буфер для текста
     _itoa_s(racket.y, txt, 10);//преобразование числовой переменной в текст. текст окажется в переменной txt
-    TextOutA(window.context, 10, 200, "Hero.y", 5);
-    TextOutA(window.context, 200, 200, (LPCSTR)txt, strlen(txt));
+    TextOutA(window.context, 10, 100, "HeroY", 5);
+    TextOutA(window.context, 200, 100, (LPCSTR)txt, strlen(txt));
+
+    _itoa_s(racket.x, txt, 10);//преобразование числовой переменной в текст. текст окажется в переменной txt
+    TextOutA(window.context, 10, 150, "HeroX", 5);
+    TextOutA(window.context, 200, 150, (LPCSTR)txt, strlen(txt));
 }
 
 void ProcessInput()
 {
     if (GetAsyncKeyState(VK_LEFT)) racket.x -= racket.speed;
     if (GetAsyncKeyState(VK_RIGHT)) racket.x += racket.speed;
-    if (GetAsyncKeyState(VK_UP)) racket.y -= racket.speed;
+    //if (GetAsyncKeyState(VK_UP)) racket.y -= racket.speed;
     if (GetAsyncKeyState(VK_DOWN)) racket.y += racket.speed;
-    if (GetAsyncKeyState(VK_SPACE))
+    if (GetAsyncKeyState(VK_UP))
     {
         Jump();
     };
@@ -115,14 +127,10 @@ void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool
     {
         GetObject(hBitmapBall, sizeof(BITMAP), (LPSTR)&bm); // Определяем размеры изображения
 
-        if (alpha)
-        {
-            TransparentBlt(window.context, x, y, x1, y1, hMemDC, 0, 0, x1, y1, RGB(0, 0, 0));//все пиксели черного цвета будут интепретированы как прозрачные
-        }
-        else
-        {
-            StretchBlt(hDC, x, y, x1, y1, hMemDC, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY); // Рисуем изображение bitmap
-        }
+       
+        
+        StretchBlt(hDC, x, y, x1, y1, hMemDC, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY); // Рисуем изображение bitmap
+        
 
         SelectObject(hMemDC, hOldbm);// Восстанавливаем контекст памяти
     }
@@ -132,7 +140,8 @@ void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool
 void ShowRacketAndBall()
 {
     ShowBitmap(window.context, 0, 0, window.width, window.height, hBack);//задний фон
-    ShowBitmap(window.context, racket.x - racket.width / 2., racket.y, racket.width, racket.height, racket.hBitmap);// ракетка игрока
+    ShowBitmap(window.context, racket.x, racket.y, racket.width, racket.height, racket.hBitmap);//ракетка игрока
+    ShowBitmap(window.context, cube.x , cube.y, cube.width, cube.height, cube.hBitmap); //отображение платформы
 }
 
 void LimitRacket()
@@ -166,7 +175,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     InitWindow();//здесь инициализируем все что нужно для рисования в окне
     InitGame();//здесь инициализируем переменные игры
 
-    mciSendString(TEXT("play ..\\Debug\\music.mp3 repeat"), NULL, 0, NULL);
+    //mciSendString(TEXT("play ..\\Debug\\music.mp3 repeat"), NULL, 0, NULL);
     ShowCursor(NULL);
     
     while (!GetAsyncKeyState(VK_ESCAPE))
