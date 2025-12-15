@@ -6,19 +6,22 @@
 #include <iostream>
 
 // секция данных игры  
-typedef struct {
+typedef struct
+{
     float x, y, width, height, rad, dx, dy, speed, gravity, jump, jumpheight;
     HBITMAP hBitmap;//хэндл к спрайту шарика 
 } sprite;
 
 sprite racket;//ракетка игрока
 
-struct {
+struct
+{
     int score, balls;//количество набранных очков и оставшихся "жизней"
     bool action = false;//состояние - ожидание (игрок должен нажать пробел) или игра
 } game;
 
-struct {
+struct
+{
     HWND hWnd;//хэндл окна
     HDC device_context, context;// два контекста устройства (для буферизации)
     int width, height;//сюда сохраним размеры окна которое создаст программа
@@ -35,7 +38,6 @@ void InitGame()
     //результат работы LoadImageA сохраняет в хэндлах битмапов, рисование спрайтов будет произовдиться с помощью этих хэндлов
     racket.hBitmap = (HBITMAP)LoadImageA(NULL, "rash.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
     hBack = (HBITMAP)LoadImageA(NULL, "back2.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
-    //------------------------------------------------------
 
     racket.width = 128; //хитбокс
     racket.height = 210;
@@ -47,13 +49,9 @@ void InitGame()
     racket.jumpheight = racket.y - (racket.jump*2.f);
     racket.gravity = 5;
 }
-void Jump() {
-
-    
+void Jump()
+{
     racket.y -= racket.jump;
-    
-
-    
 }
 
 void ShowScore()
@@ -82,7 +80,8 @@ void ProcessInput()
         Jump();
     };
 
-    if (racket.y < 100) {
+    if (racket.y < 100)
+    {
         racket.jump = 0.f;
     }
 }
@@ -127,9 +126,7 @@ void LimitRacket()
     racket.x = min(racket.x, window.width - racket.width / 2.);//аналогично для правого угла
     racket.y = max(racket.y, racket.height * 0.1);
     racket.y = min(racket.y, window.height - racket.height * 3.2);
-    
 }
-
 
 void InitWindow()
 {
@@ -152,7 +149,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     _In_ LPWSTR    lpCmdLine,
     _In_ int       nCmdShow)
 {
-    
     InitWindow();//здесь инициализируем все что нужно для рисования в окне
     InitGame();//здесь инициализируем переменные игры
 
@@ -172,13 +168,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         
         LimitRacket();//проверяем, чтобы ракетка не убежала за экран
 
-        if (racket.y >= 407.f) {
+        if (racket.y >= 407.f)
+        {
             racket.jump = 20.f;
         }
         //ProcessBall();//перемещаем шарик
         //ProcessRoom();//обрабатываем отскоки от стен и каретки, попадание шарика в картетку
-        
     }
-
 }
 //сделать так, чтобы пока персонаж находится на земле, гравитация была равна нулю и включалась когда он в воздухе. требуется запихать её в цикл, вытащив из основного while. попытаться сделать переход в другую локу. это делается через куб коллизии и телепортации персонажа в начало координат по х
