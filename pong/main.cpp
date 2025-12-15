@@ -10,7 +10,22 @@ typedef struct
 {
     float x, y, width, height, rad, dx, dy, speed, gravity, jump, jumpheight;
     HBITMAP hBitmap;//хэндл к спрайту шарика 
+    bool isJumping;         // флаг прыжка
+    bool isOnGround;        // на земле ли
 } sprite;
+
+
+typedef struct //структура для платформ
+{
+    float x, y, width, height;
+} platform;
+
+typedef struct //структура для локации
+{
+    float groundLevel;      // уровень земли
+    vector<platform>platforms; // платформы в локации
+    HBITMAP background;     // фон локации
+} location;
 
 sprite racket;//ракетка игрока
 
@@ -25,7 +40,7 @@ struct
     HWND hWnd;//хэндл окна
     HDC device_context, context;// два контекста устройства (для буферизации)
     int width, height;//сюда сохраним размеры окна которое создаст программа
-} window;
+}   window;
 
 HBITMAP hBack;// хэндл для фонового изображения
 
@@ -45,7 +60,6 @@ void InitGame()
     racket.x = window.width / 2.;//ракетка посередине окна
     racket.y = window.height - racket.height;//чуть выше низа экрана - на высоту ракетки
     racket.jump = 30;
-    //racket.jumpheight = racket.y - racket.jump * 2;
     racket.jumpheight = racket.y - (racket.jump*2.f);
     racket.gravity = 5;
 }
@@ -110,7 +124,6 @@ void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool
 
         SelectObject(hMemDC, hOldbm);// Восстанавливаем контекст памяти
     }
-
     DeleteDC(hMemDC); // Удаляем контекст памяти
 }
 
@@ -141,7 +154,6 @@ void InitWindow()
     window.context = CreateCompatibleDC(window.device_context);//второй буфер
     SelectObject(window.context, CreateCompatibleBitmap(window.device_context, window.width, window.height));//привязываем окно к контексту
     GetClientRect(window.hWnd, &r);
-
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
