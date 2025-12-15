@@ -4,7 +4,9 @@
 
 #include <windows.h>
 #include <iostream>
+#include <vector>
 
+using namespace std;
 // секция данных игры  
 typedef struct
 {
