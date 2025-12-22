@@ -1,116 +1,325 @@
-﻿//linker::system::subsystem  - Windows(/ SUBSYSTEM:WINDOWS)
-//configuration::advanced::character set - not set
-//linker::input::additional dependensies Msimg32.lib; Winmm.lib
-
 #include <windows.h>
 #include <iostream>
 #include <vector>
+#include <string>
 
 using namespace std;
 
-// секция данных игры  
+// ?????? ?????? ????  
 typedef struct
 {
-    float x, y, width, height, rad, dx, dy, speed, gravity, jump, jumpheight;
-    HBITMAP hBitmap;//хэндл к спрайту шарика 
-    bool isJumping;         // флаг прыжка
-    bool isOnGround;        // на земле ли
+    float x, y, width, height, rad, dx, dy, speed, gravity, jumpForce;
+    float verticalVelocity;  // ???????????? ????????
+    bool isJumping;         // ???? ??????
+    bool isOnGround;        // ?? ????? ??
+    HBITMAP hBitmap;//????? ? ??????? ?????? 
 } sprite;
 
-typedef struct //структура для платформ
+typedef struct //????????? ??? ????????
 {
     float x, y, width, height;
     HBITMAP hBitmap;
+    bool isSolid;           // ????????? ?? ????????? ?????
 } platform;
 
-typedef struct //структура для локации
+typedef struct //????????? ??? ???????
 {
-    float groundLevel;      // уровень земли
-    vector<platform>platforms; // платформы в локации
-    HBITMAP background;     // фон локации
+    float groundLevel;      // ??????? ?????
+    vector<platform> platforms; // ????????? ? ???????
+    HBITMAP background;     // ??? ???????
 } location;
 
-sprite racket;//ракетка игрока
-sprite cube;
+sprite racket;//??????? ??????
+location currentLocation;
+
 struct
 {
-    bool action = false;//состояние - ожидание (игрок должен нажать пробел) или игра
+    int score, balls;//?????????? ????????? ????? ? ?????????? "??????"
+    bool action = false;//????????? - ???????? (????? ?????? ?????? ??????) ??? ????
 } game;
 
 struct
 {
-    HWND hWnd;//хэндл окна
-    HDC device_context, context;// два контекста устройства (для буферизации)
-    int width, height;//сюда сохраним размеры окна которое создаст программа
+    HWND hWnd;//????? ????
+    HDC device_context, context;// ??? ????????? ?????????? (??? ???????????)
+    int width, height;//???? ???????? ??????? ???? ??????? ??????? ?????????
 }   window;
 
-HBITMAP hBack;// хэндл для фонового изображения
+// ??????? ??? ?????????????? string ? wstring
+std::wstring stringToWString(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+    std::wstring wstrTo(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+    return wstrTo;
+}
 
-//cекция кода
+// ??????? ??? ?????????????? int ? wstring
+std::wstring intToWString(int value) {
+    wchar_t buffer[32];
+    _itow_s(value, buffer, 10);
+    return std::wstring(buffer);
+}
+
+// ??????? ???????? ???????? AABB (Axis-Aligned Bounding Box)
+bool CheckCollision(float x1, float y1, float w1, float h1,
+    float x2, float y2, float w2, float h2)
+{
+    return (x1 < x2 + w2 &&
+        x1 + w1 > x2 &&
+        y1 < y2 + h2 &&
+        y1 + h1 > y2);
+}
+
+// ???????? ???????? ? ?????????? ????? (??????? ?? ?????????)
+bool CheckPlatformCollisionFromTop(sprite* player, platform* plat)
+{
+    float playerBottom = player->y + player->height;
+    float playerNextBottom = playerBottom + player->verticalVelocity; // ?????????????? ??????? ?????
+
+    // ?????????, ????????? ?? ????? ??? ?????????? ? ?????? ?? ??
+    if (player->verticalVelocity > 0 &&
+        playerNextBottom >= plat->y &&
+        playerBottom <= plat->y &&
+        player->x + player->width > plat->x &&
+        player->x < plat->x + plat->width)
+    {
+        return true;
+    }
+    return false;
+}
+
+// ???????? ???????? ? ?????????? ?????
+bool CheckPlatformCollisionFromSide(sprite* player, platform* plat)
+{
+    // ????????? ????? ???????
+    if (player->x + player->width > plat->x &&
+        player->x < plat->x &&
+        player->y + player->height > plat->y &&
+        player->y < plat->y + plat->height)
+    {
+        return true;
+    }
+
+    // ????????? ?????? ???????
+    if (player->x < plat->x + plat->width &&
+        player->x + player->width > plat->x + plat->width &&
+        player->y + player->height > plat->y &&
+        player->y < plat->y + plat->height)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+void UpdatePhysics()
+{
+    // ????????? ?????????? ??????? ??? ????????? ????????
+    float prevY = racket.y;
+
+    // ???? ?? ?? ????? - ????????? ??????????
+    if (!racket.isOnGround)
+    {
+        racket.verticalVelocity += racket.gravity;
+        racket.y += racket.verticalVelocity;
+    }
+
+    // ????????? ???????? ? ??????
+    if (racket.y + racket.height >= currentLocation.groundLevel)
+    {
+        racket.y = currentLocation.groundLevel - racket.height;
+        racket.isOnGround = true;
+        racket.isJumping = false;
+        racket.verticalVelocity = 0;
+    }
+    else
+    {
+        racket.isOnGround = false;
+    }
+
+    // ????????? ???????? ?? ????? ???????????
+    for (auto& plat : currentLocation.platforms)
+    {
+        // ???????? ??????? ?? ????????? ??????
+        if (CheckPlatformCollisionFromTop(&racket, &plat))
+        {
+            float overlapleft = plat.x - racket.x;     //????????? ?????? ???, ??????????? ? ???????? ????????? ??????????
+            float overlapright = plat.x - racket.x;
+            float overlapup = plat.y - racket.y;
+            float overlapdown = plat.y - racket.y;
+
+            float minoverlapx = min(overlapleft, overlapright);
+            float minoverlapy = min(overlapup, overlapdown);
+
+            float Itog = min(minoverlapy, minoverlapx);
+
+            if (Itog == overlapleft)
+            {
+                racket.x = plat.x - racket.width;
+            }
+            else if (Itog == overlapright)
+            {
+                racket.x = plat.x + racket.width;
+            }
+            else if (Itog == overlapup)
+            {
+                racket.y = plat.y - racket.height;
+            }
+            else if (Itog == overlapdown)
+            {
+                racket.y = plat.y + racket.height;
+            }
+
+            /*if (minoverlapx < minoverlapy)
+            {
+               racket.x = -plat.x;
+            }
+            else
+            {
+               racket.y = -plat.y;
+            }*/
+            //    racket.y = plat.y - racket.height; // ?????? ?????? ?? ?????????
+            //    racket.isOnGround = true;
+            //    racket.isJumping = false;
+            //    racket.verticalVelocity = 0;
+            //    break; // ??????? ????? ?????? ????????
+            //}
+
+            // //???????? ???????? ????? (????????????? ????????)
+            //if (CheckPlatformCollisionFromSide(&racket, &plat))
+            //{
+            //    // ??????????? ?????? ?? ?????????
+            //    if (racket.x + racket.width > plat.x && racket.x < plat.x)
+            //    {
+            //        racket.x = plat.x - racket.width - 1; // ?????????? ?????
+            //    }
+            //    else if (racket.x < plat.x + plat.width && racket.x + racket.width > plat.x + plat.width)
+            //    {
+            //        racket.x = plat.x + plat.width + 1; // ?????????? ??????
+            //    }
+        }
+    }
+}
+
+void Jump()
+{
+    if (racket.isOnGround)
+    {
+        racket.isJumping = true;
+        racket.isOnGround = false;
+        racket.verticalVelocity = -racket.jumpForce; // ????????????? ???????? - ???????? ?????
+    }
+}
 
 void InitGame()
 {
-    //в этой секции загружаем спрайты с помощью функций gdi
-    //пути относительные - файлы должны лежать рядом с .exe 
-    //результат работы LoadImageA сохраняет в хэндлах битмапов, рисование спрайтов будет произовдиться с помощью этих хэндлов
-    racket.hBitmap = (HBITMAP)LoadImageA(NULL, "rash.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
-    cube.hBitmap = (HBITMAP)LoadImageA(NULL, "rash.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    // ???????? ???????? ? ?????????????? ??????? ?????
+    racket.hBitmap = (HBITMAP)LoadImageW(NULL, L"rash.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    currentLocation.background = (HBITMAP)LoadImageW(NULL, L"back2.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
 
-    hBack = (HBITMAP)LoadImageA(NULL, "back2.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
-
-    racket.width = 128; //хитбокс
+    // ????????????? ??????
+    racket.width = 128;
     racket.height = 210;
-    racket.speed = 15;//скорость перемещения ракетки
-    racket.x = window.width / 2.;//ракетка посередине окна
-    racket.y = window.height - racket.height;//чуть выше низа экрана - на высоту ракетки
-    racket.jump = 30;
-    racket.jumpheight = racket.y - (racket.jump*2.f);
-    racket.gravity = 5;
+    racket.speed = 15;
+    racket.x = window.width / 2.;
+    racket.y = window.height - racket.height - 100; // ?????? ???? ?????
+    racket.jumpForce = 40.0f;
+    racket.gravity = 0.8f;
+    racket.verticalVelocity = 0;
+    racket.isJumping = false;
+    racket.isOnGround = false;
 
-    cube.width = 300;
-    cube.height = 300;
-    cube.x = window.width/4;
-    cube.y = window.height/ 2;
-}
-void Jump()
-{
-    racket.y -= racket.jump;
+    // ????????????? ???????
+    currentLocation.groundLevel = window.height - 100; // ??????? ?????
+
+    // ??????? ????????? ????????
+    platform plat1;
+    plat1.x = 300;
+    plat1.y = 500;
+    plat1.width = 200;
+    plat1.height = 30;
+    plat1.hBitmap = NULL; // ????? ????????? ????????
+    plat1.isSolid = true;
+
+    platform plat2;
+    plat2.x = 600;
+    plat2.y = 400;
+    plat2.width = 150;
+    plat2.height = 30;
+    plat2.hBitmap = NULL;
+    plat2.isSolid = true;
+
+    platform plat3;
+    plat3.x = 200;
+    plat3.y = 300;
+    plat3.width = 100;
+    plat3.height = 30;
+    plat3.hBitmap = NULL;
+    plat3.isSolid = true;
+
+    // ????????? ????????? ? ???????
+    currentLocation.platforms.push_back(plat1);
+    currentLocation.platforms.push_back(plat2);
+    currentLocation.platforms.push_back(plat3);
 }
 
 void ShowScore()
 {
-    //поиграем шрифтами и цветами
+    // ????????? ?????? ? ??????
     SetTextColor(window.context, RGB(160, 160, 160));
     SetBkColor(window.context, RGB(0, 0, 0));
     SetBkMode(window.context, TRANSPARENT);
-    auto hFont = CreateFont(70, 0, 0, 0, FW_BOLD, 0, 0, 0, 0, 0, 0, 2, 0, "CALIBRI");
-    auto hTmp = (HFONT)SelectObject(window.context, hFont);
 
-    char txt[32];//буфер для текста
-    _itoa_s(racket.y, txt, 10);//преобразование числовой переменной в текст. текст окажется в переменной txt
-    TextOutA(window.context, 10, 100, "HeroY", 5);
-    TextOutA(window.context, 200, 100, (LPCSTR)txt, strlen(txt));
+    // ???????? ?????? ? ??????? ???????
+    HFONT hFont = CreateFontW(24, 0, 0, 0, FW_BOLD, 0, 0, 0,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE, L"CALIBRI");
+    HFONT hOldFont = (HFONT)SelectObject(window.context, hFont);
 
-    _itoa_s(racket.x, txt, 10);//преобразование числовой переменной в текст. текст окажется в переменной txt
-    TextOutA(window.context, 10, 150, "HeroX", 5);
-    TextOutA(window.context, 200, 150, (LPCSTR)txt, strlen(txt));
+    // ?????????? ?????????? Y
+    wstring textY = L"HeroY: " + intToWString((int)racket.y);
+    TextOutW(window.context, 10, 10, textY.c_str(), textY.length());
+
+    // ?????????? ?????????? X
+    wstring textX = L"HeroX: " + intToWString((int)racket.x);
+    TextOutW(window.context, 10, 40, textX.c_str(), textX.length());
+
+    // ?????????? ?????????
+    wstring state = racket.isOnGround ? L"On Ground" : L"In Air";
+    TextOutW(window.context, 10, 70, state.c_str(), state.length());
+
+    // ?????????? ????????? ??????
+    wstring jumpState = racket.isJumping ? L"Jumping" : L"Not Jumping";
+    TextOutW(window.context, 10, 100, jumpState.c_str(), jumpState.length());
+
+    // ?????????? ???????????? ????????
+    wstring velocity = L"VelocityY: " + intToWString((int)racket.verticalVelocity);
+    TextOutW(window.context, 10, 130, velocity.c_str(), velocity.length());
+
+    // ??????????????? ?????? ????? ? ??????? ?????????
+    SelectObject(window.context, hOldFont);
+    DeleteObject(hFont);
 }
 
 void ProcessInput()
 {
+    // ?????????????? ????????
     if (GetAsyncKeyState(VK_LEFT)) racket.x -= racket.speed;
     if (GetAsyncKeyState(VK_RIGHT)) racket.x += racket.speed;
-    //if (GetAsyncKeyState(VK_UP)) racket.y -= racket.speed;
-    if (GetAsyncKeyState(VK_DOWN)) racket.y += racket.speed;
-    if (GetAsyncKeyState(VK_UP))
-    {
-        Jump();
-    };
 
-    if (racket.y < 100)
+    bool spaceWasPressed = false;
+    // ?????? ?? ?????? ??? ??????? ?????
+    if ((GetAsyncKeyState(VK_UP) & 0x8000))
     {
-        racket.jump = 0.f;
+        if (!spaceWasPressed)
+        {
+            Jump();
+            spaceWasPressed = true;
+        }
     }
+    spaceWasPressed = false;
 }
 
 void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool alpha = false)
@@ -119,51 +328,107 @@ void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool
     HDC hMemDC;
     BITMAP bm;
 
-    hMemDC = CreateCompatibleDC(hDC); // Создаем контекст памяти, совместимый с контекстом отображения
-    hOldbm = (HBITMAP)SelectObject(hMemDC, hBitmapBall);// Выбираем изображение bitmap в контекст памяти
+    hMemDC = CreateCompatibleDC(hDC);
+    hOldbm = (HBITMAP)SelectObject(hMemDC, hBitmapBall);
 
-    if (hOldbm) // Если не было ошибок, продолжаем работу
+    if (hOldbm)
     {
-        GetObject(hBitmapBall, sizeof(BITMAP), (LPSTR)&bm); // Определяем размеры изображения
-
-       
-        
-        StretchBlt(hDC, x, y, x1, y1, hMemDC, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY); // Рисуем изображение bitmap
-        
-
-        SelectObject(hMemDC, hOldbm);// Восстанавливаем контекст памяти
+        GetObject(hBitmapBall, sizeof(BITMAP), (LPSTR)&bm);
+        StretchBlt(hDC, x, y, x1, y1, hMemDC, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+        SelectObject(hMemDC, hOldbm);
     }
-    DeleteDC(hMemDC); // Удаляем контекст памяти
+    DeleteDC(hMemDC);
+}
+
+// ??????? ????????? ?????????
+void DrawPlatform(HDC hDC, platform* plat)
+{
+    // ??????? ????? ??? ?????????
+    HBRUSH hBrush = CreateSolidBrush(RGB(150, 75, 0)); // ?????????? ????
+    HBRUSH hOldBrush = (HBRUSH)SelectObject(hDC, hBrush);
+
+    // ?????? ????????????? ?????????
+    Rectangle(hDC, plat->x, plat->y, plat->x + plat->width, plat->y + plat->height);
+
+    // ??????????????? ?????
+    SelectObject(hDC, hOldBrush);
+    DeleteObject(hBrush);
+
+    // ???? ???? ???????? - ?????? ??
+    if (plat->hBitmap != NULL)
+    {
+        BITMAP bm;
+        GetObject(plat->hBitmap, sizeof(BITMAP), &bm);
+        HDC hMemDC = CreateCompatibleDC(hDC);
+        SelectObject(hMemDC, plat->hBitmap);
+        BitBlt(hDC, plat->x, plat->y, plat->width, plat->height, hMemDC, 0, 0, SRCCOPY);
+        DeleteDC(hMemDC);
+    }
 }
 
 void ShowRacketAndBall()
 {
-    ShowBitmap(window.context, 0, 0, window.width, window.height, hBack);//задний фон
-    ShowBitmap(window.context, racket.x, racket.y, racket.width, racket.height, racket.hBitmap);//ракетка игрока
-    ShowBitmap(window.context, cube.x , cube.y, cube.width, cube.height, cube.hBitmap); //отображение платформы
+    // ????????? ????
+    if (currentLocation.background != NULL)
+    {
+        ShowBitmap(window.context, 0, 0, window.width, window.height, currentLocation.background);
+    }
+    else
+    {
+        // ???? ???? ???, ???????? ??????
+        HBRUSH hBrush = CreateSolidBrush(RGB(0, 0, 0));
+        RECT rect = { 0, 0, window.width, window.height };
+        FillRect(window.context, &rect, hBrush);
+        DeleteObject(hBrush);
+    }
+
+    // ????????? ???? ????????
+    for (auto& plat : currentLocation.platforms)
+    {
+        DrawPlatform(window.context, &plat);
+    }
+
+    // ????????? ??????
+    if (racket.hBitmap != NULL)
+    {
+        ShowBitmap(window.context, racket.x, racket.y, racket.width, racket.height, racket.hBitmap);
+    }
+    else
+    {
+        // ???? ???????? ???, ?????? ??????? ?????????????
+        HBRUSH hBrush = CreateSolidBrush(RGB(255, 0, 0));
+        HBRUSH hOldBrush = (HBRUSH)SelectObject(window.context, hBrush);
+        Rectangle(window.context, racket.x, racket.y, racket.x + racket.width, racket.y + racket.height);
+        SelectObject(window.context, hOldBrush);
+        DeleteObject(hBrush);
+    }
 }
 
 void LimitRacket()
 {
-    racket.x = max(racket.x, racket.width / 2.);//если коодината левого угла ракетки меньше нуля, присвоим ей ноль
-    racket.x = min(racket.x, window.width - racket.width / 2.);//аналогично для правого угла
-    racket.y = max(racket.y, racket.height * 0.1);
-    racket.y = min(racket.y, window.height - racket.height * 3.2);
+    // ??????????? ?? ???????????
+    racket.x = max(racket.x, 0.0f);
+    racket.x = min(racket.x, (float)window.width - racket.width);
+
+    // ??????????? ?? ????????? (????? ?? ?????? ??????? ??????)
+    racket.y = max(racket.y, -racket.height * 2.0f);
 }
 
 void InitWindow()
 {
     SetProcessDPIAware();
-    window.hWnd = CreateWindow("edit", 0, WS_POPUP | WS_VISIBLE | WS_MAXIMIZE, 0, 0, 0, 0, 0, 0, 0, 0);
+
+    // ???????? ???? ? ??????? ???????
+    window.hWnd = CreateWindowW(L"edit", L"", WS_POPUP | WS_VISIBLE | WS_MAXIMIZE,
+        0, 0, 0, 0, 0, 0, 0, 0);
 
     RECT r;
     GetClientRect(window.hWnd, &r);
-    window.device_context = GetDC(window.hWnd);//из хэндла окна достаем хэндл контекста устройства для рисования
-    window.width = r.right - r.left;//определяем размеры и сохраняем
+    window.device_context = GetDC(window.hWnd);
+    window.width = r.right - r.left;
     window.height = r.bottom - r.top;
-    window.context = CreateCompatibleDC(window.device_context);//второй буфер
-    SelectObject(window.context, CreateCompatibleBitmap(window.device_context, window.width, window.height));//привязываем окно к контексту
-    GetClientRect(window.hWnd, &r);
+    window.context = CreateCompatibleDC(window.device_context);
+    SelectObject(window.context, CreateCompatibleBitmap(window.device_context, window.width, window.height));
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -171,31 +436,30 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     _In_ LPWSTR    lpCmdLine,
     _In_ int       nCmdShow)
 {
-    InitWindow();//здесь инициализируем все что нужно для рисования в окне
-    InitGame();//здесь инициализируем переменные игры
+    InitWindow();
+    InitGame();
 
-    //mciSendString(TEXT("play ..\\Debug\\music.mp3 repeat"), NULL, 0, NULL);
-    ShowCursor(NULL);
-    
+    ShowCursor(FALSE); // ???????? ??????
+
     while (!GetAsyncKeyState(VK_ESCAPE))
     {
-        racket.y += racket.gravity;
+        // ?????????? ??????
+        UpdatePhysics();
 
-        ShowRacketAndBall();//рисуем фон, ракетку и шарик
-        ShowScore();//рисуем очик и жизни
-        BitBlt(window.device_context, 0, 0, window.width, window.height, window.context, 0, 0, SRCCOPY);//копируем буфер в окно
-        Sleep(16);//ждем 16 милисекунд (1/количество кадров в секунду)
+        // ????????? ?????
+        ProcessInput();
 
-        ProcessInput();//опрос клавиатуры
-        
-        LimitRacket();//проверяем, чтобы ракетка не убежала за экран
+        // ???????????
+        LimitRacket();
 
-        if (racket.y >= 407.f)
-        {
-            racket.jump = 20.f;
-        }
-        //ProcessBall();//перемещаем шарик
-        //ProcessRoom();//обрабатываем отскоки от стен и каретки, попадание шарика в картетку
+        // ?????????
+        ShowRacketAndBall();
+        ShowScore();
+        BitBlt(window.device_context, 0, 0, window.width, window.height, window.context, 0, 0, SRCCOPY);
+
+        // ????????
+        Sleep(16);
     }
+
+    return 0;
 }
-//сделать так, чтобы пока персонаж находится на земле, гравитация была равна нулю и включалась когда он в воздухе. требуется запихать её в цикл, вытащив из основного while. попытаться сделать переход в другую локу. это делается через куб коллизии и телепортации персонажа в начало координат по х
